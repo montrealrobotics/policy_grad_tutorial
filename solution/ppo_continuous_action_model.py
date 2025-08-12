@@ -148,6 +148,8 @@ class Agent(nn.Module):
 class ForwardModel(nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
+        #TODO Implement a neural network for the transition model
+        #BEGIN SOLN
         self.model = nn.Sequential(
             layer_init(nn.Linear(input_dim, 64)),
             nn.Tanh(),
@@ -155,11 +157,15 @@ class ForwardModel(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(64, output_dim))
         )
+        #END SOLN
 
     def forward(self, state, action):
         # Concatenate state and action as input
+        #TODO return p(s' | s, a) 
+        #BEGIN SOLN
         x = torch.cat([state, action], dim=-1)
         return self.model(x)
+        #END SOLN
 
 
 if __name__ == "__main__":
@@ -207,10 +213,13 @@ if __name__ == "__main__":
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # Initialize the optimizer for the ForwardModel
+    #TODO: Create the Forward Model and optimizer
+    #BEGIN SOLN
     input_dim = np.array(envs.single_observation_space.shape).prod() + np.prod(envs.single_action_space.shape)
     output_dim = np.array(envs.single_observation_space.shape).prod()
     forward_model = ForwardModel(input_dim, output_dim)
     model_opt = torch.optim.Adam(forward_model.parameters(), lr=1e-3)
+    #END SOLN
 
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
@@ -219,9 +228,7 @@ if __name__ == "__main__":
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
     values = torch.zeros((args.num_steps, args.num_envs)).to(device)
-
-    # Ensure b_next_obs is correctly stored and reshaped
-    obs_prime = torch.zeros_like(obs)
+    obs_transition = torch.zeros_like(obs)
 
     # TRY NOT TO MODIFY: start the game
     global_step = 0
@@ -254,16 +261,15 @@ if __name__ == "__main__":
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            #TODO Execute an action in the environment then store the resulting data.
-            ### HINT: torch networks can only process torch.Tensor not numpy array
-            ### for example to convert the action from tensor to torch use action.cpu().numpy()
-            #BEGIN SOLN
             next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
+
+            #TODO STORE the next state transition
+            #BEGIN SOLN
             # Store the next transition observation in the buffer
-            obs_prime[step] = next_obs
+            obs_transition[step] = next_obs
             #END SOLN
 
             if "final_info" in infos:
@@ -301,7 +307,7 @@ if __name__ == "__main__":
 
         # flatten the batch
         b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
-        b_next_obs = obs_prime.reshape((-1, ) + envs.single_observation_space.shape)
+        b_next_obs = obs_transition.reshape((-1, ) + envs.single_observation_space.shape)
         b_logprobs = logprobs.reshape(-1)
         b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
         b_advantages = advantages.reshape(-1)
@@ -389,6 +395,9 @@ if __name__ == "__main__":
                 break
 
         # Optimizing the ForwardModel
+        #TODO Implement training the forward model
+        #TIP: If lost on where to start, use the policy objective as inspiration
+        #BEGIN SOLN
         for epoch in range(args.update_epochs):
             np.random.shuffle(b_inds)
             epoch_loss = 0.0
@@ -414,7 +423,7 @@ if __name__ == "__main__":
             # Print the average loss for the epoch
             avg_loss = epoch_loss / (args.batch_size // args.minibatch_size)
             print(f"Epoch {epoch}: Average Model Loss = {avg_loss}")
-            
+        #END SOLN 
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
