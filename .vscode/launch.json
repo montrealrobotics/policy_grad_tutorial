@@ -20,7 +20,23 @@
 
                 "--rl_alg", "ppo",
             ]
-        },
+        }, {
+            "name": "Run Model Policy",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "solution/ppo_continuous_action_model.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--no-cuda", //"false",
+                "--env_id", "HalfCheetah-v4",
+                //"--capture-video", 
+                "--num_envs", "8", 
+                //"--rl_alg", "reinforce",
+
+                "--rl_alg", "ppo",
+            ]
+        }
         {
             "name": "Python: Run Current File",
             "type": "python",

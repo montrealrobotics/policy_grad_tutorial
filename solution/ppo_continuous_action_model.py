@@ -145,6 +145,23 @@ class Agent(nn.Module):
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
 
 
+class ForwardModel(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        self.model = nn.Sequential(
+            layer_init(nn.Linear(input_dim, 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, output_dim))
+        )
+
+    def forward(self, state, action):
+        # Concatenate state and action as input
+        x = torch.cat([state, action], dim=-1)
+        return self.model(x)
+
+
 if __name__ == "__main__":
     args = tyro.cli(Args)
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -189,6 +206,12 @@ if __name__ == "__main__":
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
+    # Initialize the optimizer for the ForwardModel
+    input_dim = np.array(envs.single_observation_space.shape).prod() + np.prod(envs.single_action_space.shape)
+    output_dim = np.array(envs.single_observation_space.shape).prod()
+    forward_model = ForwardModel(input_dim, output_dim)
+    model_opt = torch.optim.Adam(forward_model.parameters(), lr=1e-3)
+
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
     actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
@@ -196,6 +219,9 @@ if __name__ == "__main__":
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
     values = torch.zeros((args.num_steps, args.num_envs)).to(device)
+
+    # Ensure b_next_obs is correctly stored and reshaped
+    obs_prime = torch.zeros_like(obs)
 
     # TRY NOT TO MODIFY: start the game
     global_step = 0
@@ -236,6 +262,8 @@ if __name__ == "__main__":
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
+            # Store the next transition observation in the buffer
+            obs_prime[step] = next_obs
             #END SOLN
 
             if "final_info" in infos:
@@ -273,6 +301,7 @@ if __name__ == "__main__":
 
         # flatten the batch
         b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
+        b_next_obs = obs_prime.reshape((-1, ) + envs.single_observation_space.shape)
         b_logprobs = logprobs.reshape(-1)
         b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
         b_advantages = advantages.reshape(-1)
@@ -359,6 +388,33 @@ if __name__ == "__main__":
             if args.target_kl is not None and approx_kl > args.target_kl:
                 break
 
+        # Optimizing the ForwardModel
+        for epoch in range(args.update_epochs):
+            np.random.shuffle(b_inds)
+            epoch_loss = 0.0
+            for start in range(0, args.batch_size, args.minibatch_size):
+                end = start + args.minibatch_size
+                mb_inds = b_inds[start:end]
+
+                # Forward pass through the model
+                predicted_next_state = forward_model(b_obs[mb_inds], b_actions[mb_inds])
+                true_next_state = b_next_obs[mb_inds]  # Assuming b_next_obs contains the true next states
+
+                # Compute loss
+                model_loss = ((predicted_next_state - true_next_state) ** 2).mean()
+
+                # Backpropagation and optimization
+                model_opt.zero_grad()
+                model_loss.backward()
+                model_opt.step()
+
+                # Accumulate loss for the epoch
+                epoch_loss += model_loss.item()
+
+            # Print the average loss for the epoch
+            avg_loss = epoch_loss / (args.batch_size // args.minibatch_size)
+            print(f"Epoch {epoch}: Average Model Loss = {avg_loss}")
+            
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
@@ -372,6 +428,9 @@ if __name__ == "__main__":
         writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
         writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
+        # Log the average model loss to the writer
+        writer.add_scalar("losses/model_loss", avg_loss, global_step)
+
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
