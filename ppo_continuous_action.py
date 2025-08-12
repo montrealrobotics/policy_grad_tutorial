@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import gymnasium as gym
 
+import pybullet_envs  # noqa
 import numpy as np
 import torch
 import torch.nn as nn
@@ -220,7 +221,6 @@ if __name__ == "__main__":
             #END SOLN
 
             # ALGO LOGIC: action logic
-            #TODO: Implement training
             with torch.no_grad():
                 action, logprob, _, value = agent.get_action_and_value(next_obs)
                 values[step] = value.flatten()
@@ -231,11 +231,10 @@ if __name__ == "__main__":
             #TODO Execute an action in the environment then store the resulting data.
             ### HINT: torch networks can only process torch.Tensor not numpy array
             ### for example to convert the action from tensor to torch use action.cpu().numpy()
+            ###NOTE: gymnasium envs will return 5 values: s, r, terminated, truncated, i 
+            ###NOTE: envs are done either if terminated  or truncated
             #BEGIN SOLN
-            next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
-            next_done = np.logical_or(terminations, truncations)
-            rewards[step] = torch.tensor(reward).to(device).view(-1)
-            next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
+            infos  = {} # this should be deleted
             #END SOLN
 
             if "final_info" in infos:
@@ -261,12 +260,10 @@ if __name__ == "__main__":
                 #should be current reward + G_t+1
                 G_t_n = mc_returns[t+1] if (t + 1) < mc_returns.shape[0] else 0.0
                 mc_returns[t] =  rewards[t]  + args.gamma * G_t_n * nextnonterminal 
-                #TODO ## Execute an action in the environment then store the resulting data.
-                ### HINT: torch networks can only process torch.Tensor not numpy array
-                ### for example to convert the action from tensor to torch use action.cpu().numpy()
+                #TODO ## Give the code for computing the advantage
+                ## Hint, use the values and returns                
                 #START SOLN
-                delta = rewards[t] + args.gamma * nextvalues * nextnonterminal - values[t]
-                advantages[t] = lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
+                
                 #END SOLN
 
             returns = advantages + values
@@ -324,9 +321,7 @@ if __name__ == "__main__":
                     #TODO: Calculate the PPO objective
                     #REMINDER: The negative of the objective maximizes with gradient DESCENT algs
                     #BEGIN SOLN
-                    pg_loss1 = -mb_advantages * ratio
-                    pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
-                    pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+                    
                     #END SOLN
 
                     # Value loss
@@ -334,18 +329,7 @@ if __name__ == "__main__":
 
                     #TODO: Provide code for calculate the Value loss function
                     #BEGIN SOLN
-                    if args.clip_vloss:
-                        v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
-                        v_clipped = b_values[mb_inds] + torch.clamp(
-                            newvalue - b_values[mb_inds],
-                            -args.clip_coef,
-                            args.clip_coef,
-                        )
-                        v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
-                        v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
-                        v_loss = 0.5 * v_loss_max.mean()
-                    else:
-                        v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
+                    
                     #END SOLN
 
                     entropy_loss = entropy.mean()

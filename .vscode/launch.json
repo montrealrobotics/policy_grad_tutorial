@@ -10,10 +10,15 @@
             "request": "launch",
             "program": "solution/ppo_continuous_action.py",
             "console": "integratedTerminal",
-            "justMyCode": false,
+            "justMyCode": true,
             "args": [
                 "--no-cuda", //"false",
                 "--env_id", "HalfCheetah-v4",
+                //"--capture-video", 
+                "--num_envs", "8", 
+                //"--rl_alg", "reinforce",
+
+                "--rl_alg", "ppo",
             ]
         },
         {
@@ -22,6 +27,22 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal"
+        },{
+            "name": "Run Policy",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "ppo_continuous_action.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--no-cuda", //"false",
+                "--env_id", "HalfCheetah-v4",
+                //"--capture-video", 
+                "--num_envs", "8", 
+                //"--rl_alg", "reinforce",
+
+                "--rl_alg", "ppo",
+            ]
         }
     ]
 }
