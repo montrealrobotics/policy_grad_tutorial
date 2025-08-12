@@ -18,7 +18,7 @@ This should run the code once you implement the missing details
 ```
 python ppo_continuous_action.py --env_id HalfCheetah-v4 --num_envs 8 
 ```
-# Exercise 2
+# Exercise 2 (Implement Forward Model)
 
 This should run the code once you implement the missing details
 
