@@ -36,7 +36,7 @@
 
                 "--rl_alg", "ppo",
             ]
-        }
+        },
         {
             "name": "Python: Run Current File",
             "type": "python",
